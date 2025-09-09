@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV to SQL Converter</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f7f6;
+            color: #333;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            border-radius: 10px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 25px;
+        }
+        input[type="file"] {
+            margin: 20px 0;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px; /* Adds space between buttons */
+        }
+        button {
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #155ab6;
+        }
+        #downloadTemplateBtn {
+            background-color: #5f6368;
+        }
+        #downloadTemplateBtn:hover {
+            background-color: #4c4f53;
+        }
+        #status {
+            margin-top: 20px;
+            font-style: italic;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CSV to SQL Converter 📝</h1>
+        <p>Select a CSV file or download the template to get started.</p>
+        <input type="file" id="csvFileInput" accept=".csv">
+        <div class="button-group">
+            <button id="downloadTemplateBtn">Download Template 📥</button>
+            <button id="processButton">Generate SQL ⚙️</button>
+        </div>
+        <p id="status"></p>
+    </div>
+    <script>
+        const csvFileInput = document.getElementById('csvFileInput');
+        const processButton = document.getElementById('processButton');
+        const downloadTemplateBtn = document.getElementById('downloadTemplateBtn'); // New button
+        const statusElement = document.getElementById('status');
+        const csvTemplateContent = "firstname,surname,year,class\nJohn,Doe,7,7A\nJane,Smith,8,8B\n";
+        downloadTemplateBtn.addEventListener('click', () => {
+            downloadFile(csvTemplateContent, 'template.csv', 'text/csv');
+            statusElement.textContent = 'Template file downloaded.';
+        });
+        processButton.addEventListener('click', () => {
+            const file = csvFileInput.files[0];
+            if (!file) {
+                statusElement.textContent = '⚠️ Please select a file first!';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const csvData = event.target.result;
+                const rows = csvData.split('\n').filter(row => row.trim() !== '');
+                let sqlContent = '';
+                let arrClass = [];
+                let sqlClass = "INSERT INTO `class` (`idClass`, `idUsers`, `yrClass`, `nameClass`, `dateClass`) VALUES";
+                let sqlStud = "INSERT INTO `stud` (`idStud`, `idUsers`, `fStud`, `sStud`, `targetStud`, `uidStud`, `yrStud`, `dateStud`) VALUES";
+                let sqlTarget = "INSERT INTO `target` (`idTarget`, `idUsers`, `idStud`, `valTarget`, `dateTarget`) VALUES";
+                let sqlList = "INSERT INTO `list` (`idList`, `idClass`, `idStud`, `dateList`) VALUES";
+                for (let i = 1; i < rows.length; i++) {
+                    const columns = rows[i].split(',');
+                    if (columns.length >= 4) {
+                        const firstname = columns[0].trim();
+                        const surname = columns[1].trim();
+                        const year = columns[2].trim();
+                        const className = columns[3].trim();
+                        if (firstname && surname && year && className) {
+                            const safeFirstname = firstname.replace(/'/g, "''");
+                            const safeSurname = surname.replace(/'/g, "''");
+                            const safeClassName = className.replace(/'/g, "''");
+                            let classIndex = arrClass.indexOf(`${safeClassName}`);
+                            if (classIndex === -1) {
+                                arrClass.push(`${safeClassName}`);
+                                classIndex = arrClass.length - 1;
+                            }
+                            classIndex += 1;
+                            sqlStud += `\n(${i}, 3, '${safeFirstname}', '${safeSurname}', NULL, 'uid${i}', ${year}, '2025-09-01'),`;
+                            sqlTarget += `\n(${i}, 3, ${i}, NULL, '2025-09-01'),`;
+                            sqlList += `\n(${i}, ${classIndex}, ${i}, '2025-09-01'),`;
+                        }
+                    }
+                }
+                arrClass.forEach((className, index) => {
+                    let classId = index + 1;
+                    let year = parseInt(className.match(/^\d+/)[0]);
+                    sqlClass += `\n(${classId}, 3, ${year}, '${className}', '2025-09-01'),`;
+                });
+                sqlClass = sqlClass.replace(/.$/,";");
+                sqlStud = sqlStud.replace(/.$/,";");
+                sqlTarget = sqlTarget.replace(/.$/,";");
+                sqlList = sqlList.replace(/.$/,";");
+                sqlContent = "START TRANSACTION;\n\n" + sqlClass + "\n\n" + sqlStud + "\n\n" + sqlTarget + "\n\n" + sqlList + "\n\nCOMMIT;";
+                if (sqlContent) {
+                    downloadFile(sqlContent, 'output.sql', 'application/sql');
+                    statusElement.textContent = '✅ Success! Your SQL file has been downloaded.';
+                } else {
+                    statusElement.textContent = '❌ Could not generate SQL. Check file format.';
+                }
+            };
+            reader.onerror = function() {
+                statusElement.textContent = 'Error reading file!';
+            };
+            reader.readAsText(file);
+        });
+
+        function downloadFile(content, fileName, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
